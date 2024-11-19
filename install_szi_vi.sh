@@ -2,6 +2,26 @@
 #
 # Инсталлятор СЗИ ВИ
 #
+# Объявляем фцнкцию включения логов
+log_start() {
+    echo "Добро пожаловать в мастер включения логов ядра ЦУ СЗИ ВИ"
+    echo "Создаем файл для включения логгирования"
+    touch /tmp/dlneedlog
+    if [$? -eq 0 ]; then
+        echo "Успешно создали файл dlneedlog в директории /tmp/"
+    else
+        echo "Невозсожно создать файл dlneedlog для включения логов"
+        return
+    fi
+    echo "Для начала сбора логов необходимо перезапустить службу ядра"
+    sudo systemctl restart confident-vicored.service
+    if [ $? -eq 0 ]; then
+        echo "Служба успешно перезапущена"
+    else
+        echo "Ошибка остановки службы ядра"
+        return
+    fi
+}
 
 # Объявляем функцию установки
 install() {
@@ -27,7 +47,7 @@ reset_core() {
     echo -e "\033[104m Начинаем процедуру сброса ядра ЦУ СЗИ ВИ к заводским настройкам \033[0m"
     sleep 1
     echo -e "\033[32m Останавливаем службу ядра \033[0m"
-    systemctl stop confident-vicored.service
+    sudo systemctl stop confident-vicored.service
     if [ $? -eq 0 ]; then
         sleep 1
         echo -e "\033[42m Служба остановлена! \033[0m"
@@ -123,6 +143,7 @@ echo "Выберите, что вы хотите сделать:"
 echo "1 - Установить ядро защиты СЗИ ВИ"
 echo "2 - Сбросить настройки ядра (вернуть к заводским настройкам)"
 echo "3 - Удалить ядро"
+echo "4 - Включить логгирование ядра"
 read -r choice
 
 if [[ $choice -eq 1 ]]; then
@@ -131,6 +152,8 @@ elif [[ $choice -eq 2 ]]; then
     reset_core
 elif [[ $choice -eq 3 ]]; then
     remove
+elif [[ $choice -eq 4 ]]; then
+    log_start
 else
     echo "Неправильный выбор"
 fi
