@@ -2,27 +2,6 @@
 #
 # Инсталлятор СЗИ ВИ
 #
-# Объявляем фцнкцию включения логов
-log_start() {
-    echo "Добро пожаловать в мастер включения логов ядра ЦУ СЗИ ВИ"
-    echo "Создаем файл для включения логгирования"
-    touch /tmp/dlneedlog
-    if [$? -eq 0 ]; then
-        echo "Успешно создали файл dlneedlog в директории /tmp/"
-    else
-        echo "Невозсожно создать файл dlneedlog для включения логов"
-        return
-    fi
-    echo "Для начала сбора логов необходимо перезапустить службу ядра"
-    sudo systemctl restart confident-vicored.service
-    if [ $? -eq 0 ]; then
-        echo "Служба успешно перезапущена"
-    else
-        echo "Ошибка остановки службы ядра"
-        return
-    fi
-}
-
 # Объявляем функцию установки
 install() {
     echo "Добро пожаловать в мастер установки СЗИ ВИ ИК5"
@@ -139,11 +118,51 @@ remove() {
     fi
 }
 
+# Объявляем фцнкцию включения логов
+log_start() {
+    echo "Добро пожаловать в мастер включения логов ядра ЦУ СЗИ ВИ"
+    echo "Создаем файл для включения логгирования"
+    touch /tmp/dlneedlog
+    if [ $? -eq 0 ]; then
+        echo "Успешно создали файл dlneedlog в директории /tmp/"
+    else
+        echo "Нет доступа, невозможно создать файл dlneedlog для включения логов"
+        return
+    fi
+    echo "Для начала сбора логов необходимо перезапустить службу ядра"
+    sudo systemctl restart confident-vicored.service
+    if [ $? -eq 0 ]; then
+        echo "Служба успешно перезапущена"
+    else
+        echo "Ошибка остановки службы ядра"
+        return
+    fi
+}
+
+# Объявляем функцию отключения логов
+log_stop() {
+    echo "Удаляем временный файл dlneedlog"
+    rm /tmp/dlneedlog
+    if [ $? -eq 0 ]; then
+        echo "Успешно удалили файл"
+    else
+        echo "Нет доступа, невозможно удалить файл dlneedlog"
+    echo "Перезапускаем ядро"
+    sudo systemctl restart confident-vicored.service
+    if [ $? -eq 0 ]; then
+        echo "Успешно перезапустили ядро"
+    else
+        echo "Ошибка остановки службы ядра"
+        return
+    fi 
+}
+
 echo "Выберите, что вы хотите сделать:"
 echo "1 - Установить ядро защиты СЗИ ВИ"
 echo "2 - Сбросить настройки ядра (вернуть к заводским настройкам)"
 echo "3 - Удалить ядро"
 echo "4 - Включить логгирование ядра"
+echo "5 - Выключить логгирование ядра"
 read -r choice
 
 if [[ $choice -eq 1 ]]; then
@@ -154,6 +173,8 @@ elif [[ $choice -eq 3 ]]; then
     remove
 elif [[ $choice -eq 4 ]]; then
     log_start
+elif [[ $choice -eq 5 ]]; then
+    log_stop
 else
     echo "Неправильный выбор"
 fi
