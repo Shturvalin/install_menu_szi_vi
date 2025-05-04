@@ -1,159 +1,178 @@
 #!/bin/bash
 #
-# Инсталлятор СЗИ ВИ
+# Инсталлятор СЗИ ВИ (полностью исправленная версия)
 #
-# Объявляем фцнкцию включения логов
-log_start() {
-    echo "Добро пожаловать в мастер включения логов ядра ЦУ СЗИ ВИ"
-    echo "Создаем файл для включения логгирования"
-    touch /tmp/dlneedlog
-    if [$? -eq 0 ]; then
-        echo "Успешно создали файл dlneedlog в директории /tmp/"
-    else
-        echo "Невозсожно создать файл dlneedlog для включения логов"
-        return
-    fi
-    echo "Для начала сбора логов необходимо перезапустить службу ядра"
-    sudo systemctl restart confident-vicored.service
-    if [ $? -eq 0 ]; then
-        echo "Служба успешно перезапущена"
-    else
-        echo "Ошибка остановки службы ядра"
-        return
+
+# Цветовые переменные
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+# Функция для проверки ошибок
+check_error() {
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Ошибка выполнения команды!${NC}"
+        return 1
     fi
 }
 
-# Объявляем функцию установки
 install() {
-    echo "Добро пожаловать в мастер установки СЗИ ВИ ИК5"
-    echo "Укажите путь расположения установочного файла"
-    read path
-    echo "Укажите расширение установочного файла RPM или DEB"
-    read extension
-    echo "Начинаем процедуру установки"
-    if [ "$extension" == "rpm" ]; then
-        echo "Установка пакета .RPM"
-        cd "$path" || { echo "Неверный путь"; exit 1; }
-        sudo rpm -i confident-vicored.rpm
+    echo -e "${CYAN}Добро пожаловать в мастер установки СЗИ ВИ ИК5${NC}"
+    
+    # Автопоиск пакета
+    detect_package() {
+        local pkg=$(find "$HOME" -type f \( -name "*.rpm" -o -name "*.deb" \) -print -quit 2>/dev/null)
+        [[ $pkg =~ \.rpm$ ]] && echo "rpm"
+        [[ $pkg =~ \.deb$ ]] && echo "deb"
+    }
+
+    # Выбор файла
+    if command -v zenity >/dev/null && [ -n "$DISPLAY" ]; then
+        path=$(zenity --file-selection --title="Выберите установочный файл (RPM/DEB)" --file-filter="*.rpm *.deb")
+    elif command -v dialog >/dev/null; then
+        path=$(dialog --title "Выбор файла" --fselect "$HOME/" 15 60 3>&1 1>&2 2>&3)
     else
-        echo "Установка пакета .DEB"
-        cd "$path" || { echo "Неверный путь"; exit 1; }
-        sudo dpkg -i confident-vicored.deb
+        read -rp "Укажите полный путь к установочному файлу: " path
     fi
+
+    # Валидация файла
+    if [ ! -f "$path" ]; then
+        echo -e "${RED}Ошибка: файл не найден!${NC}"
+        return 1
+    fi
+
+    # Определение формата
+    extension="${path##*.}"
+    if [[ "$extension" != "rpm" && "$extension" != "deb" ]]; then
+        echo -e "${RED}Неподдерживаемый формат файла!${NC}"
+        return 1
+    fi
+
+    # Установка
+    echo -e "${YELLOW}Начало установки...${NC}"
+    if [ "$extension" == "rpm" ]; then
+        sudo rpm -ivh "$path"
+    else
+        sudo dpkg -i "$path"
+    fi
+    check_error || return 1
+
+    # Получение IP
+    ip_address=$(hostname -I | awk '{print $1}')
+    [ -n "$ip_address" ] && echo -e "\n${GREEN}Установка завершена! Веб-интерфейс: ${CYAN}https://$ip_address:4564${NC}"
 }
 
-# Объявляем функцию сброса ядра
 reset_core() {
-    echo -e "\033[104m Начинаем процедуру сброса ядра ЦУ СЗИ ВИ к заводским настройкам \033[0m"
-    sleep 1
-    echo -e "\033[32m Останавливаем службу ядра \033[0m"
+    echo -e "${BLUE}Сброс ядра к заводским настройкам${NC}"
+    
+    # Остановка службы
+    echo -e "${YELLOW}Остановка службы...${NC}"
     sudo systemctl stop confident-vicored.service
-    if [ $? -eq 0 ]; then
-        sleep 1
-        echo -e "\033[42m Служба остановлена! \033[0m"
-    else
-        echo -e "\033[41m Ошибка остановки службы ядра \033[0m"
-        return
-    fi 
-    sleep 1
-    echo -e "\033[32m Сбрасываем права на папку с ядром \033[0m"
-    chmod -R 777 /opt/confident
-    if [ $? -eq 0 ]; then
-        sleep 1
-        echo -e "\033[42m Успешно! \033[0m"
-    else
-        echo -e "\033[41m Ошибка сброса прав, нет доступа \033[0m"
-        return
-    fi
+    check_error || return 1
 
-    sleep 1
-    echo -e "\033[32m Удаляем папку с базой /db/ \033[0m"
-    rm -rf /opt/confident/db
-    if [ $? -eq 0 ]; then
-        sleep 1
-        echo -e "\033[42m Успешно! \033[0m"
-    else
-        echo -e "\033[41m Ошибка удаления папки \033[0m"
-        return
-    fi
+    # Сброс прав
+    echo -e "${YELLOW}Сброс разрешений...${NC}"
+    sudo chmod -R 755 /opt/confident
+    check_error || return 1
 
-    sleep 1
-    echo -e "\033[32m Удаляем папку с журналами /jrn/ \033[0m"
-    rm -rf /opt/confident/jrn
-    if [ $? -eq 0 ]; then
-        sleep 1
-        echo -e "\033[42m Успешно! \033[0m"
-    else
-        echo -e "\033[41m Ошибка удаления папки \033[0m"
-        return
-    fi
+    # Удаление данных
+    local dirs=("/opt/confident/db" "/opt/confident/jrn")
+    for dir in "${dirs[@]}"; do
+        echo -e "${YELLOW}Удаление: $dir...${NC}"
+        sudo rm -rf "$dir"
+        check_error || return 1
+    done
 
-    sleep 1
-    echo -e "\033[32m Переходим в каталог с ядром /opt/bin \033[0m"
-    cd /opt/confident/bin
-    if [ $? -eq 0 ]; then
-        sleep 1
-        echo -e "\033[42m Успешно! \033[0m"
-    else
-        echo -e "\033[41m Не могу перейти \033[0m"
-        return
-    fi
+    # Удаление файла активации
+    echo -e "${YELLOW}Очистка системных файлов...${NC}"
+    sudo rm -f /opt/confident/bin/.6s6Aar0IHK
+    check_error || return 1
 
-    sleep 1
-    echo -e "\033[32m Удаляем файл первого запуска \033[0m"
-    rm -rf .6s6Aar0IHK
-    if [ $? -eq 0 ]; then
-        sleep 1
-        echo -e "\033[42m Успешно! \033[0m"
-    else
-        echo -e "\033[41m Ошибка удаления \033[0m"
-        return
-    fi
-
-    sleep 1
-    echo -e "\033[32m Стартуем ядро \033[0m"
-    systemctl start confident-vicored.service
-    if [ $? -eq 0 ]; then
-        sleep 1
-        echo -e "\033[41m Служба ядра успешно запущена! \033[0m"
-    else
-        echo -e "\033[31m Ошибка запуска службы ядра \033[0m"
-        return
-    fi
-
-    sleep 1
-    echo -e "\033[31m Скрипт завершил свою работу! \033[0m"
+    # Запуск службы
+    echo -e "${YELLOW}Запуск службы...${NC}"
+    sudo systemctl start confident-vicored.service
+    check_error || return 1
+    
+    echo -e "${GREEN}Сброс успешно завершен!${NC}"
 }
 
-# Объявляем функцию удаления
 remove() {
-    echo "Укажите расширение установленного файла RPM или DEB"
-    read extension
-    echo "Начинаем процедуру удаления"
-    if [ "$extension" == "rpm" ]; then
-        echo "Удаление пакета .RPM"
+    echo -e "${RED}УДАЛЕНИЕ СИСТЕМЫ ЗАЩИТЫ${NC}"
+    
+    # Определение пакета
+    if rpm -q confident-vicored &>/dev/null; then
         sudo rpm -e confident-vicored
-    else
-        echo "Удаление пакета .DEB"
+    elif dpkg -l confident-vicored &>/dev/null; then
         sudo dpkg -r confident-vicored
+    else
+        echo -e "${YELLOW}Пакет не обнаружен!${NC}"
+        return 1
     fi
+    check_error || return 1
+    
+    echo -e "${GREEN}Удаление завершено!${NC}"
 }
 
-echo "Выберите, что вы хотите сделать:"
-echo "1 - Установить ядро защиты СЗИ ВИ"
-echo "2 - Сбросить настройки ядра (вернуть к заводским настройкам)"
-echo "3 - Удалить ядро"
-echo "4 - Включить логгирование ядра"
-read -r choice
+log_control() {
+    case $1 in
+        start)
+            echo -e "${YELLOW}Активация логирования...${NC}"
+            sudo touch /tmp/dlneedlog
+            sudo systemctl restart confident-vicored.service
+            ;;
+        stop)
+            echo -e "${YELLOW}Остановка логирования...${NC}"
+            sudo rm -f /tmp/dlneedlog
+            sudo systemctl restart confident-vicored.service
+            ;;
+    esac
+    check_error || return 1
+}
 
-if [[ $choice -eq 1 ]]; then
-    install
-elif [[ $choice -eq 2 ]]; then
-    reset_core
-elif [[ $choice -eq 3 ]]; then
-    remove
-elif [[ $choice -eq 4 ]]; then
-    log_start
-else
-    echo "Неправильный выбор"
-fi
+restart_core() {
+    echo -e "${YELLOW}Перезапуск службы...${NC}"
+    sudo systemctl restart confident-vicored.service
+    check_error || return 1
+}
+
+status_core() {
+    systemctl status confident-vicored.service
+    check_error || return 1
+}
+
+show_menu() {
+    clear
+    echo -e "${CYAN}┌─────────────────────────────────┐"
+    echo -e "│   ${RED}СИСТЕМА УПРАВЛЕНИЯ СЗИ ВИ${CYAN}     │"
+    echo -e "├─────────────────────────────────┤"
+    echo -e "│ 1. Установить                   │"
+    echo -e "│ 2. Сброс к заводским настройкам │"
+    echo -e "│ 3. Удалить                      │"
+    echo -e "│ 4. Включить логирование         │"
+    echo -e "│ 5. Отключить логирование        │"
+    echo -e "│ 6. Перезапустить службу         │"
+    echo -e "│ 7. Статус службы ядра           │"
+    echo -e "│ 8. Выход                        │"
+    echo -e "└─────────────────────────────────┘${NC}"
+}
+
+while true; do
+    show_menu
+    read -rp "Выберите действие [1-8]: " choice
+    case $choice in
+        1) install ;;
+        2) reset_core ;;
+        3) remove ;;
+        4) log_control start ;;
+        5) log_control stop ;;
+        6) restart_core ;;
+        7) status_core ;;
+        8) exit 0 ;;
+        *) echo -e "${RED}Неверный выбор!${NC}"; sleep 1 ;;
+    esac
+    echo -e "\nНажмите Enter для продолжения..."
+    read -s
+done
