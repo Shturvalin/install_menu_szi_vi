@@ -119,17 +119,31 @@ remove() {
 log_control() {
     case $1 in
         start)
-            echo -e "${YELLOW}Активация логирования...${NC}"
-            sudo touch /tmp/dlneedlog
-            sudo systemctl restart confident-vicored.service
+            echo -e "${YELLOW}Вы уверены, что хотите включить логирование? [y/N]${NC}"
+            read -r confirm
+            if [[ "$confirm" =~ [yY] ]]; then
+                sudo touch /tmp/dlneedlog && {
+                    echo -e "${GREEN}Логирование включено! Временный файл создан: /tmp/dlneedlog${NC}"
+                    sudo systemctl restart confident-vicored.service
+                } || echo -e "${RED}Ошибка создания файла!${NC}"
+            else
+                echo -e "${YELLOW}Отмена операции${NC}"
+            fi
             ;;
         stop)
-            echo -e "${YELLOW}Остановка логирования...${NC}"
             sudo rm -f /tmp/dlneedlog
             sudo systemctl restart confident-vicored.service
+            echo -e "${GREEN}Логирование отключено!${NC}"
             ;;
     esac
     check_error || return 1
+}
+
+view_logs() {
+    echo -e "${CYAN}Запуск просмотра логов (Ctrl+C для остановки)...${NC}"
+    sudo tail -F /etc/confident/vicored.log
+    echo -e "\n${YELLOW}Просмотр логов завершен. Возврат в меню...${NC}"
+    sleep 2
 }
 
 restart_core() {
@@ -145,23 +159,26 @@ status_core() {
 
 show_menu() {
     clear
-    echo -e "${CYAN}┌─────────────────────────────────┐"
-    echo -e "│   ${RED}СИСТЕМА УПРАВЛЕНИЯ СЗИ ВИ${CYAN}     │"
+    echo -e "${GREEN}┌─────────────────────────────────┐"
+    echo -e "│   ${RED}СИСТЕМА УПРАВЛЕНИЯ СЗИ ВИ${GREEN}     │"
     echo -e "├─────────────────────────────────┤"
-    echo -e "│ 1. Установить                   │"
+    echo -e "│ 1. Установить СЗИ               │"
     echo -e "│ 2. Сброс к заводским настройкам │"
-    echo -e "│ 3. Удалить                      │"
+    echo -e "│ 3. Удалить СЗИ                  │"
     echo -e "│ 4. Включить логирование         │"
     echo -e "│ 5. Отключить логирование        │"
     echo -e "│ 6. Перезапустить службу         │"
-    echo -e "│ 7. Статус службы ядра           │"
-    echo -e "│ 8. Выход                        │"
+    echo -e "│ 7. Статус службы                │"
+    echo -e "│ 8. Просмотр логов (реалтайм)    │"
+    echo -e "│ 9. Выход                        │"
     echo -e "└─────────────────────────────────┘${NC}"
+	echo ""
+    echo "dev-v2."
 }
 
 while true; do
     show_menu
-    read -rp "Выберите действие [1-8]: " choice
+    read -rp "Выберите действие [1-9]: " choice
     case $choice in
         1) install ;;
         2) reset_core ;;
@@ -170,7 +187,8 @@ while true; do
         5) log_control stop ;;
         6) restart_core ;;
         7) status_core ;;
-        8) exit 0 ;;
+        8) view_logs ;;
+        9) exit 0 ;;
         *) echo -e "${RED}Неверный выбор!${NC}"; sleep 1 ;;
     esac
     echo -e "\nНажмите Enter для продолжения..."
